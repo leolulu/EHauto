@@ -284,6 +284,18 @@ def write_sidecar_metadata(metadata_path: Path, metadata: dict[str, Any]) -> Non
     temp_path.replace(metadata_path)
 
 
+def _find_download_button(page) -> Any | None:
+    """定位 Archiver 页面上的下载按钮。"""
+    download_button = page.locator('input[value="Download Original Archive"]')
+    if download_button.count() == 0:
+        download_button = page.locator('input[type="submit"][name="dlcheck"]')
+    if download_button.count() == 0:
+        download_button = page.locator('input[type="submit"]').first
+    if download_button.count() == 0:
+        return None
+    return download_button
+
+
 def build_failure_metadata(
     gallery_url: str,
     gid: str | None,
@@ -422,6 +434,8 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
     from importlib import import_module
 
     PlaywrightTimeout = import_module('playwright.sync_api').TimeoutError
+    download_start_timeout_ms = 60000
+    download_start_max_attempts = 5
 
     gid: str | None = None
     token: str | None = None
@@ -470,13 +484,9 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
         archiver_metadata = extract_archiver_metadata_from_page(archiver_content, archiver_url)
 
         print("  查找下载按钮...")
-        download_button = page.locator('input[value="Download Original Archive"]')
-        if download_button.count() == 0:
-            download_button = page.locator('input[type="submit"][name="dlcheck"]')
-        if download_button.count() == 0:
-            download_button = page.locator('input[type="submit"]').first
+        download_button = _find_download_button(page)
 
-        if download_button.count() == 0:
+        if download_button is None:
             print("  [X] 未找到下载按钮")
             with open("debug_archiver.html", "w", encoding="utf-8") as file:
                 file.write(archiver_content)
@@ -498,11 +508,49 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
             return None
 
         print("  点击下载 Original Archive...")
-        with page.expect_download(timeout=300000) as download_info:
-            download_button.click()
-            print("  等待下载开始...")
+        download = None
+        for attempt in range(1, download_start_max_attempts + 1):
+            try:
+                print(
+                    f"  等待下载开始（第 {attempt}/{download_start_max_attempts} 次，超时 {download_start_timeout_ms // 1000} 秒）..."
+                )
+                with page.expect_download(timeout=download_start_timeout_ms) as download_info:
+                    download_button.click()
+                download = download_info.value
+                break
+            except PlaywrightTimeout:
+                if attempt == download_start_max_attempts:
+                    raise
+                print("  [!] 本次等待下载开始超时，立即重试...")
+                page.goto(archiver_url, wait_until="domcontentloaded")
+                page.wait_for_timeout(2000)
+                archiver_content = page.content()
+                archiver_metadata = extract_archiver_metadata_from_page(archiver_content, archiver_url)
+                download_button = _find_download_button(page)
+                if download_button is None:
+                    print("  [X] 重试时未找到下载按钮")
+                    with open("debug_archiver.html", "w", encoding="utf-8") as file:
+                        file.write(archiver_content)
+                    print("  已保存调试文件：debug_archiver.html")
+                    write_sidecar_metadata(
+                        metadata_path,
+                        build_failure_metadata(
+                            gallery_url,
+                            gid,
+                            token,
+                            source_metadata,
+                            runtime_metadata,
+                            "locate_download_button_retry",
+                            "重试时未找到下载按钮",
+                            detail_metadata=gallery_metadata,
+                            archiver_metadata=archiver_metadata,
+                        ),
+                    )
+                    return None
 
-        download = download_info.value
+        if download is None:
+            raise RuntimeError("download object missing after retry loop")
+
         suggested_filename = download.suggested_filename or f"{safe_title}.zip"
         save_path = Path(output_dir) / suggested_filename
         metadata_path = _build_archive_sidecar_path(save_path)
