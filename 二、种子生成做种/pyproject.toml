@@ -1,0 +1,18 @@
+[project]
+name = "ehentai-seeding-tools"
+version = "0.1.0"
+description = "E-Hentai torrent creation, upload, and seeding automation scripts"
+requires-python = ">=3.10"
+dependencies = [
+    "qbittorrent-api>=2024.0.0",
+    "requests>=2.28.0",
+    "beautifulsoup4>=4.11.0",
+    "bencode.py>=4.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py310"

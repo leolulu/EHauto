@@ -1,0 +1,11 @@
+.opencode/
+.venv/
+AGENTS.md
+__pycache__/
+
+downloads/
+ehentai_recommendations.txt
+.env
+generated_torrents/
+
+*.cookie

@@ -1,0 +1,14 @@
+[project]
+name = "ehentai-gallery-tools"
+version = "0.1.0"
+description = "E-Hentai gallery filtering and archive download automation scripts"
+requires-python = ">=3.10"
+dependencies = [
+    "playwright>=1.58.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py310"
