@@ -187,4 +187,8 @@ JSON 中会尽可能保存下载时能获取到的关联信息，包括但不限
 
 ## 许可证
 
-MIT License
+本项目采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)。
+
+你可以在非商业目的下使用、修改和分发本项目；完整条款见项目根目录的 `LICENSE` 文件。
+
+SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0

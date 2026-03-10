@@ -2,6 +2,7 @@
 name = "ehentai-seeding-tools"
 version = "0.1.0"
 description = "E-Hentai torrent creation, upload, and seeding automation scripts"
+license = { text = "PolyForm Noncommercial License 1.0.0" }
 requires-python = ">=3.10"
 dependencies = [
     "qbittorrent-api>=2024.0.0",

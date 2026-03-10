@@ -146,7 +146,10 @@ uv run python ehentai_value_filter.py -o my_recommendations.txt
 
 ## 许可证
 
-MIT License
+PolyForm Noncommercial License 1.0.0
+
+详见项目根目录 `LICENSE` 文件：
+https://polyformproject.org/licenses/noncommercial/1.0.0/
 """
 
 import re

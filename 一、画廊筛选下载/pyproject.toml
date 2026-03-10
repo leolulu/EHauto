@@ -2,6 +2,7 @@
 name = "ehentai-gallery-tools"
 version = "0.1.0"
 description = "E-Hentai gallery filtering and archive download automation scripts"
+license = { text = "PolyForm Noncommercial License 1.0.0" }
 requires-python = ">=3.10"
 dependencies = [
     "playwright>=1.58.0",
