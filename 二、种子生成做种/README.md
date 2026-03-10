@@ -227,7 +227,7 @@ QB_PASSWORD=你的密码
 | `SMB_USER` | SMB 用户名 | 空 |
 | `SMB_PASS` | SMB 密码 | 空 |
 | `TRACKERS` | Tracker 列表（逗号分隔） | 空 |
-| `TORRENT_COMMENT` | 种子注释 | Created by auto torrent workflow |
+| `TORRENT_COMMENT` | 种子注释 | 空（不写入） |
 
 **使用方法**：
 

@@ -195,7 +195,7 @@ def run_single_workflow(
         qb_username=config["QB_USERNAME"],
         qb_password=config["QB_PASSWORD"],
         trackers=[tracker],
-        comment=config.get("TORRENT_COMMENT", "Created by auto torrent workflow"),
+        comment=config.get("TORRENT_COMMENT") or "",
     )
 
     print("\n" + "-" * 60)

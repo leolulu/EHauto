@@ -380,7 +380,7 @@ def main():
         except Exception as e:
             print(f"警告: 读取 tracker 文件失败: {e}")
     
-    COMMENT = config.get("TORRENT_COMMENT", "Created by auto torrent workflow")
+    COMMENT = config.get("TORRENT_COMMENT") or ""
     
     # =============================================
     
