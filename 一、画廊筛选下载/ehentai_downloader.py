@@ -33,8 +33,8 @@ uv run python ehentai_downloader.py --url https://e-hentai.org/g/3825480/ea9a84a
 ```
 
 ## 返回值
-- Exit Code 0: 所有下载成功
-- Exit Code 1: 部分或全部下载失败
+- Exit Code 0: 至少一个画廊下载成功
+- Exit Code 1: 全部画廊下载失败
 """
 
 import hashlib
@@ -861,7 +861,7 @@ def main() -> int:
     print(f"失败：{failed_count} 个")
     print(f"输出目录：{output_dir.absolute()}")
 
-    return 0 if failed_count == 0 else 1
+    return 0 if success_count > 0 else 1
 
 
 if __name__ == "__main__":
