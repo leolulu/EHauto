@@ -435,7 +435,7 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
 
     PlaywrightTimeout = import_module('playwright.sync_api').TimeoutError
     download_start_timeout_ms = 30000
-    download_start_max_attempts = 10
+    download_start_max_attempts = 5
 
     gid: str | None = None
     token: str | None = None
