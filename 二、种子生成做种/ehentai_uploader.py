@@ -277,14 +277,14 @@ class EHentaiUploader:
         import time
         from pathlib import Path
         
-        print("\n📥 下载专属种子...")
+        print("\n[DOWNLOAD] 下载专属种子...")
         torrent_url = f"https://e-hentai.org/gallerytorrents.php?gid={gid}&t={token}"
         download_link: str | None = None
 
         for attempt in range(1, 6):
             resp = self.session.get(torrent_url, timeout=30)
             if resp.status_code != 200:
-                print(f"⚠ 无法访问种子页面，状态码：{resp.status_code}")
+                print(f"[WARN] 无法访问种子页面，状态码：{resp.status_code}")
                 return None
 
             soup = BeautifulSoup(resp.text, 'html.parser')
@@ -328,7 +328,7 @@ class EHentaiUploader:
             time.sleep(wait_seconds)
 
         if not download_link:
-            print("⚠ 未找到专属种子下载链接")
+            print("[WARN] 未找到专属种子下载链接")
             return None
         
         # 下载种子并校验完整性
@@ -342,22 +342,22 @@ class EHentaiUploader:
             last_content = dl.content
 
             if dl.status_code != 200:
-                print(f"⚠ 下载失败，状态码：{dl.status_code}")
+                print(f"[WARN] 下载失败，状态码：{dl.status_code}")
                 return None
 
             if is_valid_torrent_bytes(last_content):
                 with open(output_path, 'wb') as f:
                     f.write(last_content)
 
-                print(f"✓ 已保存：{output_path} ({len(last_content):,} bytes)")
+                print(f"[OK] 已保存：{output_path} ({len(last_content):,} bytes)")
                 return str(output_path)
 
-            print(f"⚠ 第 {attempt} 次下载到的专属种子无效，准备重试...")
+            print(f"[WARN] 第 {attempt} 次下载到的专属种子无效，准备重试...")
 
         debug_path = output_path.with_suffix('.invalid.bin')
         with open(debug_path, 'wb') as f:
             f.write(last_content)
-        print(f"⚠ 专属种子连续重试后仍无效，已保存调试文件：{debug_path}")
+        print(f"[WARN] 专属种子连续重试后仍无效，已保存调试文件：{debug_path}")
         return None
 
 
