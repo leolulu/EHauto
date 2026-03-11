@@ -434,8 +434,8 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
     from importlib import import_module
 
     PlaywrightTimeout = import_module('playwright.sync_api').TimeoutError
-    download_start_timeout_ms = 60000
-    download_start_max_attempts = 5
+    download_start_timeout_ms = 30000
+    download_start_max_attempts = 10
 
     gid: str | None = None
     token: str | None = None
@@ -521,7 +521,9 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
             except PlaywrightTimeout:
                 if attempt == download_start_max_attempts:
                     raise
-                print("  [!] 本次等待下载开始超时，立即重试...")
+                retry_delay_seconds = attempt * 10
+                print(f"  [!] 本次等待下载开始超时，{retry_delay_seconds} 秒后重试...")
+                time.sleep(retry_delay_seconds)
                 page.goto(archiver_url, wait_until="domcontentloaded")
                 page.wait_for_timeout(2000)
                 archiver_content = page.content()
