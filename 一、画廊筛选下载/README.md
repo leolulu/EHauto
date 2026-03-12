@@ -2,14 +2,31 @@
 
 自动筛选 e-hentai 网站上性价比最高的无 torrent 画廊，通过综合评估 Rating、收藏数、GP 成本、文件大小等指标，推荐最值得下载的 **Original Archive**。
 
+这个工具面向“没有 torrent 可用、但又不想盲目花 GP 下载 Archive”的场景。脚本会优先过滤掉已有 torrent 的画廊，再在剩余候选里做多轮筛选与评分，帮助你把 GP 更集中地花在更值得下载的画廊上。
+
 ## 功能特性
 
 - ✅ 自动筛选无 torrent 的画廊
+- ✅ 支持多个入口列表 URL 并汇总筛选
 - ✅ 获取 Original Archive 的 GP 成本和文件大小
+- ✅ 支持最大文件大小限制，避免大体积 Archive
+- ✅ 支持基于详情页 tag 的排除过滤
 - ✅ 综合评分模型（Rating、收藏数、GP/页、GP/MB、页数）
 - ✅ 按投入产出比排序
 - ✅ 支持自定义筛选条件
 - ✅ 输出详细的推荐报告
+
+## 下载背景
+
+E-Hentai 里的画廊通常有两种下载方式：
+
+1. **Torrent 下载** - 免费，但前提是该画廊有可用 torrent。
+2. **Archive Download** - 需要消耗 GP（Gallery Points）。
+
+本项目的筛选脚本只关注 **Original Archive**。因此它会：
+
+- 先过滤掉已有 torrent 的画廊
+- 再从“需要花 GP 下载”的候选里挑选更值得下载的内容
 
 ## 评分模型（满分 100 分）
 
@@ -51,8 +68,24 @@ uv run python ehentai_value_filter.py --help
 # 扫描更多列表页（默认 2 页）
 uv run python ehentai_value_filter.py --pages 10
 
+# 提供多个入口列表并汇总筛选
+uv run python ehentai_value_filter.py \
+  --url https://e-hentai.org/?f_cats=1019 \
+  --url https://e-hentai.org/?f_cats=767
+
 # 降低 Rating 门槛（2.0 分以上）
 uv run python ehentai_value_filter.py --min-rating 2.0
+
+# 跳过超过 1.5GB 的画廊
+uv run python ehentai_value_filter.py --max-size-gb 1.5
+
+# 排除详情页中包含特定 tag 的画廊
+uv run python ehentai_value_filter.py --exclude-tag "male:males only"
+
+# 同时排除多个 tag
+uv run python ehentai_value_filter.py \
+  --exclude-tag "male:males only" \
+  --exclude-tag "yaoi"
 
 # 显示浏览器窗口（调试用，默认无头模式）
 uv run python ehentai_value_filter.py --show-browser
@@ -71,8 +104,34 @@ uv run python ehentai_value_filter.py -o my_recommendations.txt
 | --pages | -p | 2 | 抓取列表页数 |
 | --min-rating | | 3.0 | 最低 Rating |
 | --min-pages | | 40 | 最低页数 |
+| --max-size-gb | | 1.0 | 最大原始文件大小，单位 GB，超过则跳过 |
 | --output | -o | ehentai_recommendations.txt | 输出文件 |
 | --show-browser | | | 显示浏览器窗口（默认无头模式） |
+| --exclude-tag | | 可重复指定 | 排除包含指定详情页 tag 的画廊；推荐使用 `namespace:tag` |
+
+## Tag 排除过滤
+
+`--exclude-tag` 会在访问画廊详情页后解析 `#taglist` 区域中的 tag；如果命中你提供的排除条件，当前画廊会在访问 Archiver 页面之前被跳过。
+
+推荐写法：
+
+- `namespace:tag`，例如 `male:males only`
+- 同一个参数可重复传入多次
+
+当前匹配规则：
+
+- 传入 `namespace:tag` 时，按完整 tag 匹配，支持空格、下划线、加号的等价写法
+- 传入不带 namespace 的 `tag` 时，会匹配任意 namespace 下的同名 tag value
+
+示例：
+
+```bash
+# 只排除 male 命名空间下的 males only
+uv run python ehentai_value_filter.py --exclude-tag "male:males only"
+
+# 排除任意命名空间下名为 yaoi 的 tag
+uv run python ehentai_value_filter.py --exclude-tag "yaoi"
+```
 
 ## Cookie 获取
 
@@ -115,17 +174,22 @@ uv run python ehentai_value_filter.py -o my_recommendations.txt
 1. **登录账户** - 使用 Cookie 登录
 2. **获取 GP 余额** - 从 GP Exchange 页面读取可用 GP
 3. **提取画廊列表** - 访问列表页，筛选无 torrent 画廊
-4. **获取详情** - 访问每个画廊详情页获取 Rating、收藏数
-5. **获取 GP 成本** - 访问 Archiver 页面获取 Original Archive 的 GP
-6. **计算评分** - 综合各项指标计算价值评分
-7. **排序输出** - 按评分降序输出推荐列表
+4. **列表页初筛** - 先用列表页 Rating 和页数做预筛，减少详情页访问次数
+5. **获取详情** - 访问每个画廊详情页获取 Rating、收藏数、文件大小和 tags
+6. **详情页过滤** - 应用最大大小限制与 `--exclude-tag` 规则
+7. **获取 GP 成本** - 仅对仍然保留的画廊访问 Archiver 页面，读取 Original Archive 的 GP
+8. **计算评分** - 综合各项指标计算价值评分
+9. **排序输出** - 按评分降序输出推荐列表
 
 ## 注意事项
 
 1. 脚本只筛选无 torrent 的画廊（有 torrent 的可以直接下载）
 2. GP 成本基于 **Original Archive**（原始画质）
-3. 评分是相对的，高分表示在当前列表中性价比更高
-4. 建议先用小号或少量画廊测试
+3. 列表页会先按 Rating 和页数做初筛，以减少详情页访问量
+4. 原始文件大小超过最大限制的画廊会被跳过（默认 1GB）
+5. 启用 `--exclude-tag` 后，命中排除条件的画廊会在访问 Archiver 前被跳过
+6. 评分是相对的，高分表示在当前列表中性价比更高
+7. 建议先用小号或少量画廊测试
 
 ## 完整工作流程
 

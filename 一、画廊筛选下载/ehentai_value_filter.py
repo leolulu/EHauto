@@ -1,160 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-e-hentai 高价值画廊筛选器
-========================
-
-本脚本用于自动筛选 e-hentai 网站上高价值的画廊（无 torrent 资源），
-通过综合评估 Rating、收藏数、GP 成本、文件大小等指标，
-推荐投入产出比（性价比）最高的画廊进行 Original Archive 下载。
-
-## 背景说明
-
-e-hentai 是一个大型画廊网站，用户可以通过以下方式下载内容：
-1. Torrent 下载 - 免费，但需要种子资源
-2. Archive Download - 使用 GP (Gallery Points) 购买下载权限
-   - Original Archive: 原始画质，文件较大，GP 成本较高
-   - （本脚本仅支持 Original Archive）
-
-GP 是网站的虚拟货币，通过以下方式获得：
-- 画廊访问
-- Torrent 完成
-- 归档下载
-- Hentai@Home
-
-由于 GP 有限，本脚本帮助你在预算内选择最值得下载的画廊。
-
-## 评分模型（满分 100 分）
-
-| 因素           | 权重 | 评分标准                                    |
-|----------------|------|---------------------------------------------|
-| Rating         | 30 分 | 4.0+ 得满分，2.0 以下得 0 分，线性插值          |
-| 收藏次数       | 20 分 | 100+ 收藏得满分，线性插值                     |
-| GP/页 成本     | 25 分 | 越低越好，10GP/页以内高分                   |
-| GP/MB 成本     | 15 分 | 越低越好，50GP/MB 以内高分                  |
-| 页数充足度     | 10 分 | 100-300 页最佳，过少或过多都会扣分          |
-
-## 筛选流程
-
-1. 登录账户，获取可用 GP 余额
-2. 访问指定列表页，提取无 torrent 的画廊
-3. 用列表页 Rating 和页数做初筛，减少详情页访问
-3. 对每个画廊：
-    - 访问详情页获取 Rating、收藏数、文件大小
-    - 访问 Archiver 页面获取下载所需 GP
-4. 按最大文件大小限制过滤超大画廊
-5. 计算综合价值评分
-6. 按评分排序，输出 Top N 推荐
-
-## 依赖
-
-- Python 3.10+
-- 在当前目录同步 Python 依赖：uv sync
-- 需要安装浏览器：uv run playwright install chromium
-
-## 使用方法
-
-### 基本使用
-```bash
-# 使用默认参数（处理 20 个，返回 Top 10）
-uv run python ehentai_value_filter.py
-
-# 使用 Cookie 文件
-uv run python ehentai_value_filter.py -f eht-netscape.cookie
-```
-
-### 自定义参数
-```bash
-# 扫描更多列表页（默认 2 页）
-uv run python ehentai_value_filter.py --pages 10
-
-# 降低 Rating 门槛
-uv run python ehentai_value_filter.py --min-rating 2.0
-
-# 跳过超过 1.5GB 的画廊
-uv run python ehentai_value_filter.py --max-size-gb 1.5
-
-# 显示浏览器窗口（调试用）
-uv run python ehentai_value_filter.py --show-browser
-
-# 指定输出文件
-uv run python ehentai_value_filter.py -o my_recommendations.txt
-```
-
-### 完整参数列表
-
-| 参数 | 简写 | 默认值 | 说明 |
-|------|------|--------|------|
-| --cookie-file | -f | eht-netscape.cookie | Netscape 格式的 Cookie 文件路径 |
-| --proxy | -s | http://127.0.0.1:10809 | 代理服务器地址 |
-| --url | -u | https://e-hentai.org/?f_cats=1019 | 目标列表页 URL |
-| --pages | -p | 2 | 抓取的列表页数 |
-| --min-rating | | 3.0 | 最低 Rating 要求 |
-| --min-pages | | 40 | 最低页数要求 |
-| --max-size-gb | | 1.0 | 最大原始文件大小（GB），超过则跳过 |
-| --output | -o | ehentai_recommendations.txt | 输出文件名 |
-| --show-browser | | | 显示浏览器窗口（默认无头模式） |
-
-## Cookie 获取方法
-
-1. 在浏览器中登录 e-hentai.org
-2. 安装 Cookie 编辑扩展（如 Cookie-Editor）
-3. 导出 Netscape 格式的 Cookie 文件
-4. 或使用本项目的 eht-netscape.cookie 文件
-
-需要的 Cookie：
-- ipb_member_id
-- ipb_pass_hash
-
-## 输出示例
-
-```
-可用 GP: 39,000 | 筛选出 2 个高价值画廊
-================================================================================
-
-[ 1] [榊歌丸] むちナビ（Chinese）【更新中】
-     URL: https://e-hentai.org/g/3827467/a45576b0b0/
-     分类：Manga | 上传者：战栗的大白菜
-     页数：105 | 大小：98.03 MiB
-     Rating: 2.79 (38 人评分) | 收藏：212 次
-     GP 成本：2,056 GP
-     GP/页：19.58 | GP/MB: 20.97
-     【综合评分：59.6/100】
-
-[ 2] [migiwa×MoonKOKi] 誰も言わない、みんなクズ 第 01 巻
-     URL: https://e-hentai.org/g/3827743/01a4d4db13/
-     分类：Manga | 上传者：msfly99
-     页数：166 | 大小：80.09 MiB
-     Rating: 2.70 (10 人评分) | 收藏：24 次
-     GP 成本：1,680 GP
-     GP/页：10.12 | GP/MB: 20.98
-     【综合评分：43.8/100】
-```
-
-## 注意事项
-
-1. 脚本会自动筛选无 torrent 的画廊（有 torrent 的可以直接下载）
-2. GP 成本基于 Original Archive（原始画质）
-3. 列表页会先按 Rating 和页数做初筛，降低详情页访问量
-4. 原始文件大小超过最大限制的画廊会被跳过（默认 1GB）
-5. 评分是相对的，高分表示在当前列表中性价比更高
-6. 建议先用小号或少量画廊测试
-
-## 作者
-
-自动化下载做种项目
-
-## 许可证
-
-PolyForm Noncommercial License 1.0.0
-
-详见项目根目录 `LICENSE` 文件：
-https://polyformproject.org/licenses/noncommercial/1.0.0/
-"""
-
+import html
 import re
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Literal, TypedDict
 
 
@@ -190,6 +39,9 @@ class GalleryInfo:
     list_rating: float = 0  # 列表页解析出的 0.5 精度评分
     list_rating_votes_hint: int | None = None  # 列表页 opacity 反推出的评分人数强度
     list_rating_style: str = ''  # 列表页 .ir 原始 style
+
+    # 详情页标签（规范化为 "namespace:tag"；tag 内空格保留）
+    tags: list[str] = field(default_factory=list)
     
     # 下载信息 (Original Archive)
     cost_gp: float = 0  # GP 成本
@@ -274,6 +126,106 @@ def parse_list_rating_style(style: str) -> tuple[float, int | None]:
 
     rating_count_hint = max(0, round(opacity * 15 - 5))
     return rounded_rating, rating_count_hint
+
+
+def _strip_html_tags(text: str) -> str:
+    """移除 HTML 标签并解码实体。"""
+    if not text:
+        return ''
+    without_tags = re.sub(r'<[^>]+>', '', text)
+    return html.unescape(without_tags)
+
+
+def _normalize_space(text: str) -> str:
+    return ' '.join(text.strip().split())
+
+
+def extract_tags_from_detail_html(content: str) -> list[str]:
+    """从详情页 HTML 提取 tag 列表。
+
+    返回值为规范化后的 tag："namespace:tag"（小写；tag 内空格保留）。
+    
+    说明：E-Hentai 详情页的 tag 链接通常形如 <a id="td_male:males_only">...</a>
+    - id 会携带 namespace:slug（slug 常用下划线表示空格）
+    - 可见文本更贴近真实 tag（例如 "males only"）
+    """
+    if not content:
+        return []
+
+    tags: list[str] = []
+    seen: set[str] = set()
+
+    for raw_id, inner_html in re.findall(r'<a id="td_([^"]+)"[^>]*>(.*?)</a>', content, re.DOTALL):
+        raw_id = (raw_id or '').strip().lower()
+        if not raw_id or ':' not in raw_id:
+            continue
+
+        namespace, slug = raw_id.split(':', 1)
+        visible_text = _normalize_space(_strip_html_tags(inner_html))
+        tag_value = visible_text or _normalize_space(slug.replace('_', ' '))
+        if not tag_value:
+            continue
+
+        normalized = f'{namespace}:{tag_value}'.strip().lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        tags.append(normalized)
+
+    return tags
+
+
+def _tag_variants(tag: str) -> set[str]:
+    """为匹配生成一些等价写法（空格/下划线/加号）。"""
+    base = _normalize_space(tag).lower()
+    if not base:
+        return set()
+    return {
+        base,
+        base.replace(' ', '_'),
+        base.replace(' ', '+'),
+    }
+
+
+def match_excluded_tags(excluded: list[str], gallery_tags: list[str]) -> list[str]:
+    """返回命中的排除 tag（按 excluded 顺序）。
+
+    规则：
+    - excluded 包含 ':' 时：匹配完整 "namespace:tag"（允许空格/下划线/加号写法差异）
+    - excluded 不包含 ':' 时：匹配任意 tag 的 value 部分（namespace 后的部分）
+    """
+    if not excluded or not gallery_tags:
+        return []
+
+    gallery_full_variants: set[str] = set()
+    gallery_value_variants: set[str] = set()
+    for t in gallery_tags:
+        gallery_full_variants |= _tag_variants(t)
+        if ':' in t:
+            _ns, value = t.split(':', 1)
+            gallery_value_variants |= _tag_variants(value)
+
+    hits: list[str] = []
+    for raw in excluded:
+        token = _normalize_space(str(raw)).lower()
+        if not token:
+            continue
+        if ':' in token:
+            if _tag_variants(token) & gallery_full_variants:
+                hits.append(token)
+        else:
+            if _tag_variants(token) & gallery_value_variants:
+                hits.append(token)
+    return hits
+
+
+def format_tags_for_display(tags: list[str], limit: int = 12) -> str:
+    """把 tags 格式化为一行可读文本（截断）。"""
+    if not tags:
+        return ''
+    shown = tags[:limit]
+    suffix = f' ... (+{len(tags) - limit})' if len(tags) > limit else ''
+    return ', '.join(shown) + suffix
 
 
 def shorten_title(title: str, max_length: int = 42) -> str:
@@ -426,6 +378,9 @@ def get_gallery_detail_info(page, gid: str, token: str) -> GalleryInfo | None:
         page.wait_for_timeout(1500)
         
         content = page.content()
+
+        # 提取 tags（详情页右侧 taglist 区域）
+        tags = extract_tags_from_detail_html(content)
         
         # 提取标题
         title_match = re.search(r'<h1 id="gn">([^<]+)</h1>', content)
@@ -477,6 +432,7 @@ def get_gallery_detail_info(page, gid: str, token: str) -> GalleryInfo | None:
             rating=rating,
             rating_count=rating_count,
             favorited_count=favorited_count,
+            tags=tags,
         )
         
     except Exception as e:
@@ -632,6 +588,8 @@ def print_galleries(galleries: list[GalleryInfo], available_gp: float):
         print(f"     页数：{g.pages} | 大小：{g.size_mb:.2f} MiB")
         print(f"     列表页 Rating: {g.list_rating:.1f} | 列表页评分人数强度：{g.list_rating_votes_hint}")
         print(f"     Rating: {g.rating:.2f} ({g.rating_count}人评分) | 收藏：{g.favorited_count}次")
+        if g.tags:
+            print(f"     Tags: {format_tags_for_display(g.tags)}")
         print(f"     GP 成本：{g.cost_gp:,.0f} GP")
         print(f"     GP/页：{g.gp_per_page:.2f} | GP/MB: {g.gp_per_mb:.2f}")
         print(f"     【综合评分：{g.value_score:.1f}/100】")
@@ -640,12 +598,20 @@ def print_galleries(galleries: list[GalleryInfo], available_gp: float):
     print("\n" + "=" * 120)
 
 
-def save_results(galleries: list[GalleryInfo], available_gp: float, output_file: str, max_size_gb: float):
+def save_results(
+    galleries: list[GalleryInfo],
+    available_gp: float,
+    output_file: str,
+    max_size_gb: float,
+    exclude_tags: list[str] | None = None,
+):
     """保存结果到文件"""
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(f"可用 GP: {available_gp:,.0f}\n")
         f.write(f"筛选出 {len(galleries)} 个高价值画廊\n\n")
         f.write(f"最大大小限制: {max_size_gb:.2f} GB\n\n")
+        if exclude_tags:
+            f.write(f"排除 tag: {', '.join(exclude_tags)}\n\n")
         f.write("=" * 120 + "\n\n")
         
         for i, g in enumerate(galleries, 1):
@@ -656,6 +622,8 @@ def save_results(galleries: list[GalleryInfo], available_gp: float, output_file:
             f.write(f"     页数：{g.pages} | 大小：{g.size_mb:.2f} MiB\n")
             f.write(f"     列表页 Rating: {g.list_rating:.1f} | 列表页评分人数强度：{g.list_rating_votes_hint}\n")
             f.write(f"     Rating: {g.rating:.2f} ({g.rating_count}人评分) | 收藏：{g.favorited_count}次\n")
+            if g.tags:
+                f.write(f"     Tags: {format_tags_for_display(g.tags, limit=24)}\n")
             f.write(f"     GP 成本：{g.cost_gp:,.0f} GP\n")
             f.write(f"     GP/页：{g.gp_per_page:.2f} | GP/MB: {g.gp_per_mb:.2f}\n")
             f.write(f"     【综合评分：{g.value_score:.1f}/100】\n")
@@ -714,6 +682,16 @@ def main():
                         help='输出文件名 (默认：ehentai_recommendations.txt)')
     parser.add_argument('--show-browser', action='store_true',
                         help='显示浏览器窗口（默认无头模式）')
+
+    parser.add_argument(
+        '--exclude-tag',
+        action='append',
+        default=None,
+        help=(
+            '排除包含指定 tag 的画廊（可多次指定）。支持 "namespace:tag"（推荐）或仅 "tag"。\n'
+            '示例：--exclude-tag "male:males only" --exclude-tag "yaoi"'
+        ),
+    )
     
     args = parser.parse_args()
     
@@ -733,6 +711,9 @@ def main():
     print(f"  - 最大大小：{args.max_size_gb} GB")
     print(f"  - 输出文件：{args.output}")
     print(f"  - 显示浏览器：{'是' if args.show_browser else '否（无头模式）'}")
+    exclude_tags = args.exclude_tag or []
+    if exclude_tags:
+        print(f"  - 排除 tag: {', '.join(exclude_tags)}")
     print()
     cookies = parse_netscape_cookie_file(args.cookie_file)
     print(f"加载了 {len(cookies)} 个 cookie\n")
@@ -830,6 +811,8 @@ def main():
         galleries = []
         skipped_by_file_size = 0
         skipped_file_size_details = []
+        skipped_by_exclude_tag = 0
+        skipped_exclude_tag_details = []
         
         for i, basic in enumerate(prefiltered_galleries_basic, 1):
             print(f"[{i}/{len(prefiltered_galleries_basic)}] 处理：{basic['title'][:50]}...")
@@ -843,6 +826,18 @@ def main():
             if not gallery:
                 print(f"  └─ 获取详情失败，跳过")
                 continue
+
+            # tag 排除筛选（尽量在访问 archiver 前拦截）
+            if exclude_tags and gallery.tags:
+                hits = match_excluded_tags(exclude_tags, gallery.tags)
+                if hits:
+                    skipped_by_exclude_tag += 1
+                    short_title = shorten_title(gallery.title)
+                    skipped_exclude_tag_details.append(
+                        f'{short_title} | 命中排除 tag: {", ".join(hits[:5])}'
+                    )
+                    print(f"  - 命中排除 tag ({', '.join(hits[:5])})，跳过")
+                    continue
 
             gallery.list_rating = float(basic.get('list_rating', 0.0))
             gallery.list_rating_votes_hint = basic.get('list_rating_votes_hint')
@@ -880,6 +875,9 @@ def main():
         print(f"\n详情页补充筛选结果:")
         print(f'  - 因文件过大跳过：{skipped_by_file_size} 个')
         print_skip_details('    ', skipped_file_size_details)
+        if exclude_tags:
+            print(f'  - 因命中排除 tag 跳过：{skipped_by_exclude_tag} 个')
+            print_skip_details('    ', skipped_exclude_tag_details)
         
         # 5. 计算综合评分并排序
         print("\n计算综合评分...")
@@ -891,7 +889,7 @@ def main():
         
         # 6. 输出所有结果
         print_galleries(galleries, available_gp)
-        save_results(galleries, available_gp, args.output, args.max_size_gb)
+        save_results(galleries, available_gp, args.output, args.max_size_gb, exclude_tags=exclude_tags)
         print(f"\n结果已保存到：{args.output} (共 {len(galleries)} 个画廊)")
         
         browser.close()
