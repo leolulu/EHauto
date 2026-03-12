@@ -19,10 +19,10 @@
     uv run python seed_personalized.py "generated_torrents/文件_personalized.torrent" --save-path "/mnt/data/files"
 """
 
-import sys
 import argparse
-import json
 import hashlib
+import json
+import sys
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import bencodepy
@@ -35,7 +35,7 @@ def load_config() -> dict[str, str]:
     env_file = Path(".env")
     
     if not env_file.exists():
-        print("[ERROR] 错误：找不到 .env 配置文件", file=sys.stderr)
+        print("❌ 错误：找不到 .env 配置文件", file=sys.stderr)
         print("\n请复制 .env.example 为 .env 并填写配置", file=sys.stderr)
         sys.exit(1)
     
@@ -46,7 +46,7 @@ def load_config() -> dict[str, str]:
     missing = [k for k in required if not raw_config.get(k)]
     
     if missing:
-        print(f"[ERROR] 错误：.env 缺少配置项: {', '.join(missing)}", file=sys.stderr)
+        print(f"❌ 错误：.env 缺少配置项: {', '.join(missing)}", file=sys.stderr)
         sys.exit(1)
     
     return {key: str(value) for key, value in raw_config.items() if value is not None}
@@ -75,7 +75,7 @@ def infer_save_path(torrent_path: str, config: dict[str, str], json_metadata: st
                     # 构建服务器路径
                     return f"{server_root}/{filename}".replace('//', '/')
         except Exception as e:
-            print(f"[WARN] 读取 JSON 元数据失败: {e}")
+            print(f"⚠️ 读取 JSON 元数据失败: {e}")
     
     # 从种子文件名推断
     torrent_name = Path(torrent_path).stem  # 去掉 .torrent
@@ -119,7 +119,7 @@ def add_torrent_for_seeding(
     qb_username = config.get("QB_USERNAME")
     qb_password = config.get("QB_PASSWORD")
     
-    print(f"\n[INFO] 连接 qBittorrent ({qb_host}:{qb_port})...")
+    print(f"\n🔌 连接 qBittorrent ({qb_host}:{qb_port})...")
     client = Client(
         host=f"{qb_host}:{qb_port}",
         username=qb_username,
@@ -128,12 +128,12 @@ def add_torrent_for_seeding(
     
     try:
         client.auth_log_in()
-        print(f"[OK] 已连接，版本: {client.app.version}")
+        print(f"✅ 已连接，版本: {client.app.version}")
     except Exception as e:
         raise ConnectionError(f"连接失败: {e}")
     
     # 读取种子文件
-    print(f"\n[INFO] 读取种子: {torrent_path}")
+    print(f"\nℹ️ 读取种子: {torrent_path}")
     with open(torrent_path, 'rb') as f:
         torrent_data = f.read()
 
@@ -143,13 +143,13 @@ def add_torrent_for_seeding(
         print(f"  分类: {category}")
     
     # 添加到 qBittorrent
-    print("\n[ADD] 添加种子...")
-    print(f"  [跳过哈希检查] 直接做种")
-    print(f"  [Torrent 管理模式] 手动")
-    print(f"  [内容布局] Original")
-    print(f"  [分享率上限] 不限")
-    print(f"  [做种时长上限(分钟)] 不限")
-    print(f"  [非活跃做种时长上限(分钟)] 不限")
+    print("\n➕ 添加种子...")
+    print("  [跳过哈希检查] 直接做种")
+    print("  [Torrent 管理模式] 手动")
+    print("  [内容布局] Original")
+    print("  [分享率上限] 不限")
+    print("  [做种时长上限(分钟)] 不限")
+    print("  [非活跃做种时长上限(分钟)] 不限")
     torrent_hash = calculate_torrent_infohash(torrent_path)
     print(f"  [Torrent Hash] {torrent_hash}")
     
@@ -176,18 +176,18 @@ def add_torrent_for_seeding(
             success = bool(result)
 
         if success:
-            print("[OK] 添加成功！已开始做种")
+            print("✅ 添加成功！已开始做种")
             return True
         else:
             existing = client.torrents_info(torrent_hashes=torrent_hash)
             if existing:
-                print("[INFO] 该 torrent 已存在于 qBittorrent，中断重复添加并视为成功")
+                print("ℹ️ 该 torrent 已存在于 qBittorrent，中断重复添加并视为成功")
                 return True
-            print(f"[WARN] 添加结果: {result}")
+            print(f"⚠️ 添加结果: {result}")
             return False
             
     except Exception as e:
-        print(f"[ERROR] 添加失败: {e}")
+        print(f"❌ 添加失败: {e}")
         return False
 
 
@@ -218,29 +218,29 @@ def main():
     # 检查种子文件
     torrent_path = Path(args.torrent)
     if not torrent_path.exists():
-        print(f"[ERROR] 错误：找不到种子文件: {torrent_path}", file=sys.stderr)
+        print(f"❌ 错误：找不到种子文件: {torrent_path}", file=sys.stderr)
         sys.exit(1)
     
     # 检查是否是 personalized 版本
     if "_personalized" not in torrent_path.name:
-        print("[WARN] 警告：建议上传 personalized 版本（包含专属 tracker）", file=sys.stderr)
+        print("⚠️ 警告：建议上传 personalized 版本（包含专属 tracker）", file=sys.stderr)
         response = input("是否继续？(y/N): ")
         if response.lower() != 'y':
             sys.exit(0)
     
     # 加载配置
-    print("[INFO] 加载配置...")
+    print("ℹ️ 加载配置...")
     config = load_config()
     
     # 推断或获取保存路径
     if args.save_path:
         save_path = args.save_path
-        print(f"[OK] 使用指定路径: {save_path}")
+        print(f"✅ 使用指定路径: {save_path}")
     else:
         content_path = infer_save_path(str(torrent_path), config, args.json)
         save_path = derive_qb_save_path(content_path)
-        print(f"[OK] 自动推断内容路径: {content_path}")
-        print(f"[OK] 转换后的做种目录: {save_path}")
+        print(f"✅ 自动推断内容路径: {content_path}")
+        print(f"✅ 转换后的做种目录: {save_path}")
     
     # 添加种子
     try:
@@ -253,7 +253,7 @@ def main():
         
         if success:
             print("\n" + "=" * 60)
-            print("[OK] 做种任务已启动")
+            print("✅ 做种任务已启动")
             print("=" * 60)
             print(f"种子: {torrent_path}")
             print(f"目录: {save_path}")
@@ -263,7 +263,7 @@ def main():
             sys.exit(1)
             
     except Exception as e:
-        print(f"\n[ERROR] 错误: {e}", file=sys.stderr)
+        print(f"\n❌ 错误: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
         sys.exit(1)

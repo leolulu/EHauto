@@ -201,7 +201,7 @@ class EHentaiUploader:
         # 检查文件大小（10MB 限制）
         max_size = 10 * 1024 * 1024
         if len(torrent_data) > max_size:
-            print(f"[ERROR] 种子文件超过 10MB 限制")
+            print("❌ 种子文件超过 10MB 限制")
             return False
         
         print(f"文件大小：{len(torrent_data) / 1024:.1f} KB")
@@ -235,13 +235,13 @@ class EHentaiUploader:
         
         # 检查上传结果
         if 'success' in response.text.lower() or 'uploaded' in response.text.lower() or 'complete' in response.text.lower():
-            print("[OK] 上传成功!")
+            print("✅ 上传成功!")
             
             # 下载专属种子
             if download_personalized:
                 downloaded_path = self._download_personalized_torrent(gid, token, title, output_dir)
                 if not downloaded_path:
-                    print("[ERROR] 上传成功，但下载专属种子失败")
+                    print("❌ 上传成功，但下载专属种子失败")
                     return False
             
             return True
@@ -258,9 +258,9 @@ class EHentaiUploader:
             if error is None:
                 error = soup.find('font', color='red')
             if error:
-                print(f"[ERROR] 上传失败：{error.get_text().strip()}")
+                print(f"❌ 上传失败：{error.get_text().strip()}")
             else:
-                print("[ERROR] 上传失败（未知原因）")
+                print("❌ 上传失败（未知原因）")
                 # 保存响应以便调试
                 with open('upload_response.html', 'w', encoding='utf-8') as f:
                     f.write(response.text)
@@ -277,15 +277,15 @@ class EHentaiUploader:
         import time
         from pathlib import Path
         
-        print("\n[DOWNLOAD] 下载专属种子...")
+        print("\n⬇️ 下载专属种子...")
         torrent_url = f"https://e-hentai.org/gallerytorrents.php?gid={gid}&t={token}"
         download_link: str | None = None
 
         for attempt in range(1, 6):
             resp = self.session.get(torrent_url, timeout=30)
             if resp.status_code != 200:
-                print(f"[WARN] 无法访问种子页面，状态码：{resp.status_code}")
-                return None
+                    print(f"⚠️ 无法访问种子页面，状态码：{resp.status_code}")
+                    return None
 
             soup = BeautifulSoup(resp.text, 'html.parser')
 
@@ -324,11 +324,11 @@ class EHentaiUploader:
                 break
 
             wait_seconds = attempt * 2
-            print(f"  第 {attempt} 次未找到下载链接，{wait_seconds} 秒后重试...")
+            print(f"  ⚠️ 第 {attempt} 次未找到下载链接，{wait_seconds} 秒后重试...")
             time.sleep(wait_seconds)
 
         if not download_link:
-            print("[WARN] 未找到专属种子下载链接")
+            print("⚠️ 未找到专属种子下载链接")
             return None
         
         # 下载种子并校验完整性
@@ -342,22 +342,22 @@ class EHentaiUploader:
             last_content = dl.content
 
             if dl.status_code != 200:
-                print(f"[WARN] 下载失败，状态码：{dl.status_code}")
+                print(f"⚠️ 下载失败，状态码：{dl.status_code}")
                 return None
 
             if is_valid_torrent_bytes(last_content):
                 with open(output_path, 'wb') as f:
                     f.write(last_content)
 
-                print(f"[OK] 已保存：{output_path} ({len(last_content):,} bytes)")
+                print(f"✅ 已保存：{output_path} ({len(last_content):,} bytes)")
                 return str(output_path)
 
-            print(f"[WARN] 第 {attempt} 次下载到的专属种子无效，准备重试...")
+            print(f"⚠️ 第 {attempt} 次下载到的专属种子无效，准备重试...")
 
         debug_path = output_path.with_suffix('.invalid.bin')
         with open(debug_path, 'wb') as f:
             f.write(last_content)
-        print(f"[WARN] 专属种子连续重试后仍无效，已保存调试文件：{debug_path}")
+        print(f"⚠️ 专属种子连续重试后仍无效，已保存调试文件：{debug_path}")
         return None
 
 
@@ -418,7 +418,7 @@ def main():
     else:
         cookie_file = Path(args.cookie_file)
         if not cookie_file.exists():
-            print(f"[ERROR] Cookie 文件不存在：{cookie_file}", file=sys.stderr)
+            print(f"❌ Cookie 文件不存在：{cookie_file}", file=sys.stderr)
             sys.exit(1)
         cookie_str = load_cookie_from_file(str(cookie_file))
         print(f"从文件加载 Cookie: {cookie_file}")
@@ -431,11 +431,11 @@ def main():
         test_url = f"{uploader.base_url}/home.php"
         response = uploader.session.get(test_url, timeout=10)
         if 'Welcome back' in response.text or 'Favorites' in response.text or 'My Home' in response.text:
-            print("[OK] 登录成功")
+            print("✅ 登录成功")
         elif args.cookie:
-            print("[WARNING] 可能未成功登录，请检查 Cookie 是否正确")
+            print("⚠️ 可能未成功登录，请检查 Cookie 是否正确")
         else:
-            print("[INFO] 继续（未验证登录状态）")
+            print("ℹ️ 继续（未验证登录状态）")
         
         if args.upload:
             # 上传种子
@@ -473,10 +473,10 @@ def main():
             if args.output and info.get('tracker'):
                 with open(args.output, 'w', encoding='utf-8') as f:
                     f.write(f"{info['tracker']}\n")
-                print(f"\n[OK] 已保存到：{args.output}")
+                    print(f"\n✅ 已保存到：{args.output}")
         
     except Exception as e:
-        print(f"\n[ERROR] 错误：{e}", file=sys.stderr)
+        print(f"\n❌ 错误：{e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
         sys.exit(1)

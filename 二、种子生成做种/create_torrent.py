@@ -26,10 +26,10 @@ qBittorrent 远程生成种子脚本（完整版：上传 + 生成 + 下载）
     uv run python create_torrent.py --file movie.mkv --output movie.torrent --remote-dir "movies/2024"
 """
 
-import os
-import sys
-import shutil
 import argparse
+import os
+import shutil
+import sys
 from pathlib import Path, PureWindowsPath
 
 from dotenv import dotenv_values
@@ -110,7 +110,7 @@ def upload_to_smb(
     # 用于返回的路径格式 (URI 格式)
     remote_smb_result = f"//{server}/{share}/{full_remote_path}"
     
-    print("\n[UPLOAD] 开始上传...")
+    print("\n⬆️ 开始上传...")
     print(f"  本地: {local_path_str}")
     print(f"  远程: {remote_smb_result}")
     print(f"  UNC: {unc_path}")
@@ -124,7 +124,7 @@ def upload_to_smb(
     else:
         _upload_directory_unc(local_path, unc_path)
     
-    print("[OK] 上传完成")
+    print("✅ 上传完成")
     return remote_smb_result
 
 
@@ -136,7 +136,7 @@ def _upload_single_file_unc(local_file: Path, unc_dir: str):
     remote_size = Path(dest_path).stat().st_size
     if remote_size != size:
         raise IOError(f"上传后大小不一致: {local_file} ({size}) -> {dest_path} ({remote_size})")
-    print(f"  [OK] {local_file.name} ({size:,} bytes)")
+    print(f"  ✅ {local_file.name} ({size:,} bytes)")
 
 
 def _upload_directory_unc(local_dir: Path, unc_base: str):
@@ -165,7 +165,7 @@ def _upload_directory_unc(local_dir: Path, unc_base: str):
         
         print(f"  [{i}/{total}] {relative}")
     
-    print(f"[OK] 共上传 {total} 个文件")
+    print(f"✅ 共上传 {total} 个文件")
 
 
 def convert_smb_to_server_path(smb_path: str, smb_root: str, server_root: str) -> str:
@@ -215,7 +215,7 @@ def create_torrent_remote(
     """
     import time
 
-    print(f"\n[INFO] 连接远程 qBittorrent ({qb_host}:{qb_port})...")
+    print(f"\n🔌 连接远程 qBittorrent ({qb_host}:{qb_port})...")
     client = Client(
         host=f"{qb_host}:{qb_port}",
         username=qb_username,
@@ -224,14 +224,14 @@ def create_torrent_remote(
     
     try:
         client.auth_log_in()
-        print(f"[OK] 已连接，版本: {client.app.version}")
+        print(f"✅ 已连接，版本: {client.app.version}")
     except Exception as e:
         raise ConnectionError(f"连接失败: {e}")
     
     # 服务器上临时种子输出路径
     server_output_path = str(Path(server_source_path).with_suffix('.torrent'))
     
-    print("\n[CREATE] 开始生成种子...")
+    print("\n🛠️ 开始生成种子...")
     print(f"  源: {server_source_path}")
     
     task = client.torrentcreator_add_task(
@@ -245,13 +245,13 @@ def create_torrent_remote(
     print(f"  任务ID: {task.taskID}")
     
     # 等待完成
-    print("\n[WAIT] 生成中...")
+    print("\n⏳ 生成中...")
     while True:
         status = task.status()
         state = TaskStatus(status.status)
         
         if state.name == "FINISHED":
-            print("[OK] 生成完成!")
+            print("✅ 生成完成!")
             break
         elif state.name == "FAILED":
             error_msg = getattr(status, 'error', '未知错误')
@@ -266,7 +266,7 @@ def create_torrent_remote(
         time.sleep(1)
     
     # 下载种子
-    print("\n[DOWNLOAD] 下载种子文件...")
+    print("\n⬇️ 下载种子文件...")
     torrent_data = task.torrent_file()
     
     # 保存到本地
@@ -276,11 +276,11 @@ def create_torrent_remote(
     
     with open(local_output_path, "wb") as f:
         f.write(torrent_data)
-    print(f"[OK] 已保存: {local_output_path}")
+    print(f"✅ 已保存: {local_output_path}")
     
     # 清理
     task.delete()
-    print("[OK] 任务已清理")
+    print("🧹 任务已清理")
     
     return torrent_data
 def main():
@@ -315,7 +315,7 @@ def main():
     ENV_FILE = Path(".env")
     
     if not ENV_FILE.exists():
-        print("[ERROR] 错误：找不到 .env 配置文件", file=sys.stderr)
+        print("❌ 错误：找不到 .env 配置文件", file=sys.stderr)
         print("\n请按以下步骤操作：", file=sys.stderr)
         print("  1. 复制模板文件：cp .env.example .env", file=sys.stderr)
         print("  2. 编辑 .env 文件，填入你的实际配置", file=sys.stderr)
@@ -342,7 +342,7 @@ def main():
             missing.append(f"  - {key}: {desc}")
     
     if missing:
-        print("[ERROR] 错误：.env 文件缺少以下必需配置项：\n", file=sys.stderr)
+        print("❌ 错误：.env 文件缺少以下必需配置项：\n", file=sys.stderr)
         for item in missing:
             print(item, file=sys.stderr)
         print("\n请编辑 .env 文件补全以上配置后重新运行。", file=sys.stderr)
@@ -385,7 +385,7 @@ def main():
     # =============================================
     
     print("=" * 60)
-    print("[INFO] qBittorrent 远程生成种子")
+    print("ℹ️ qBittorrent 远程生成种子")
     print("=" * 60)
     print(f"本地源: {local_source}")
     print(f"输出到: {args.output}")
@@ -398,7 +398,7 @@ def main():
     try:
         # 1. 上传到 SMB
         print("\n" + "-" * 60)
-        print("[STEP 1/3] 上传到 SMB")
+        print("[🧭步骤 1/3] 上传到 SMB")
         print("-" * 60)
         
         remote_smb_path = upload_to_smb(
@@ -411,7 +411,7 @@ def main():
         
         # 2. 路径转换
         print("\n" + "-" * 60)
-        print("[STEP 2/3] 路径转换")
+        print("[🧭步骤 2/3] 路径转换")
         print("-" * 60)
         print(f"SMB 路径: {remote_smb_path}")
         
@@ -424,7 +424,7 @@ def main():
         
         # 3. 生成种子
         print("\n" + "-" * 60)
-        print("[STEP 3/3] 生成种子")
+        print("[🧭步骤 3/3] 生成种子")
         print("-" * 60)
         
         torrent_data = create_torrent_remote(
@@ -439,13 +439,13 @@ def main():
         )
         
         print("\n" + "=" * 60)
-        print("[OK] 完成!")
+        print("✅ 完成!")
         print("=" * 60)
         print(f"种子文件: {args.output}")
         print(f"大小: {len(torrent_data)} bytes")
         
     except Exception as e:
-        print(f"\n[ERROR] 错误: {e}", file=sys.stderr)
+        print(f"\n❌ 错误: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
         sys.exit(1)

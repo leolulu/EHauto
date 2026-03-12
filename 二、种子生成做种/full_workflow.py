@@ -14,13 +14,8 @@ import json
 import sys
 from pathlib import Path
 
+from create_torrent import convert_smb_to_server_path, create_torrent_remote, upload_to_smb
 from dotenv import dotenv_values
-
-from create_torrent import (
-    convert_smb_to_server_path,
-    create_torrent_remote,
-    upload_to_smb,
-)
 from ehentai_uploader import EHentaiUploader, build_personalized_torrent_path, load_cookie_from_file
 from seed_personalized import add_torrent_for_seeding, derive_qb_save_path
 
@@ -145,7 +140,7 @@ def run_single_workflow(
     generated_torrent_path = Path(args.output) if args.output else build_generated_torrent_path(str(source_path), args.output_dir)
 
     print("=" * 60)
-    print("[INFO] 完整工作流开始")
+    print("🚀 完整工作流开始")
     print("=" * 60)
     print(f"本地源: {source_path}")
     print(f"元数据: {json_path}")
@@ -159,7 +154,7 @@ def run_single_workflow(
     uploader = EHentaiUploader(cookie_str, proxy=args.proxy)
 
     print("\n" + "-" * 60)
-    print("[STEP 1/4] 获取画廊专属 tracker")
+    print("[🧭步骤 1/4] 获取画廊专属 tracker")
     print("-" * 60)
     tracker_info = uploader.get_tracker_info(gallery_url)
     tracker = str(tracker_info["tracker"])
@@ -172,7 +167,7 @@ def run_single_workflow(
         invalid_personalized_path.unlink()
 
     print("\n" + "-" * 60)
-    print("[STEP 2/4] 上传源文件并生成原始 torrent")
+    print("[🧭步骤 2/4] 上传源文件并生成原始 torrent")
     print("-" * 60)
     remote_smb_path = upload_to_smb(
         local_path_str=str(source_path),
@@ -199,7 +194,7 @@ def run_single_workflow(
     )
 
     print("\n" + "-" * 60)
-    print("[STEP 3/4] 上传到 e-hentai 并下载 personalized torrent")
+    print("[🧭步骤 3/4] 上传到 e-hentai 并下载 personalized torrent")
     print("-" * 60)
     upload_success = uploader.upload_torrent(
         gallery_url=gallery_url,
@@ -214,7 +209,7 @@ def run_single_workflow(
         raise RuntimeError(f"上传成功，但未找到 personalized torrent: {personalized_torrent_path}")
 
     print("\n" + "-" * 60)
-    print("[STEP 4/4] 使用 personalized torrent 开始做种")
+    print("[🧭步骤 4/4] 使用 personalized torrent 开始做种")
     print("-" * 60)
     seed_success = add_torrent_for_seeding(
         torrent_path=str(personalized_torrent_path),
@@ -226,7 +221,7 @@ def run_single_workflow(
         raise RuntimeError("添加 personalized torrent 到 qBittorrent 失败")
 
     print("\n" + "=" * 60)
-    print("[OK] 完整工作流完成")
+    print("✅ 完整工作流完成")
     print("=" * 60)
     print(f"原始 torrent: {generated_torrent_path}")
     print(f"personalized torrent: {personalized_torrent_path}")
@@ -237,22 +232,22 @@ def run_single_workflow(
 
 def print_batch_summary(successes: list[Path], failures: list[tuple[Path, str]]) -> None:
     print("\n" + "=" * 60)
-    print("[SUMMARY] 批处理汇总")
+    print("🧾 批处理汇总")
     print("=" * 60)
     print(f"成功: {len(successes)}")
     for path in successes:
-        print(f"  [OK] {path.name}")
+        print(f"  ✅ {path.name}")
 
     print(f"失败: {len(failures)}")
     for path, error in failures:
-        print(f"  [FAIL] {path.name}: {error}")
+        print(f"  ❌ {path.name}: {error}")
 
 
 def cleanup_processed_source(source_path: Path, json_path: Path) -> None:
     for path in (source_path, json_path):
         if path.exists():
             path.unlink()
-            print(f"[CLEAN] 已删除: {path}")
+            print(f"🧹 已删除: {path}")
 
 
 def main() -> None:
@@ -308,7 +303,7 @@ def main() -> None:
                 raise
             error_message = str(exc)
             failures.append((workflow_source, error_message))
-            print(f"\n[ERROR] 当前文件处理失败，继续下一个: {workflow_source.name}")
+            print(f"\n❌ 当前文件处理失败，继续下一个: {workflow_source.name}")
             print(f"原因: {error_message}")
 
     if is_batch_mode:
@@ -321,5 +316,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print(f"\n[ERROR] 错误: {exc}", file=sys.stderr)
+        print(f"\n❌ 错误: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc

@@ -154,7 +154,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0/
 
 import re
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Literal, TypedDict
 
 
@@ -873,7 +873,7 @@ def main():
             
             galleries.append(gallery)
             print(
-                f"  - OK: ListRating={gallery.list_rating:.1f}, Rating={gallery.rating:.2f}, "
+                f"  - ✅ ListRating={gallery.list_rating:.1f}, Rating={gallery.rating:.2f}, "
                 f"GP={gallery.cost_gp:,.0f}, Pages={gallery.pages}"
             )
 

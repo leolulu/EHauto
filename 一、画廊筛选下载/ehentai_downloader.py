@@ -40,8 +40,8 @@ uv run python ehentai_downloader.py --url https://e-hentai.org/g/3825480/ea9a84a
 import hashlib
 import json
 import re
-import time
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, TypedDict
@@ -445,7 +445,7 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
     try:
         gid, token = extract_gid_token(gallery_url)
         if not gid or not token:
-            print(f"  [X] 无法从 URL 提取 gid/token: {gallery_url}")
+            print(f"  ❌ 无法从 URL 提取 gid/token: {gallery_url}")
             fallback_name = (source_metadata or {}).get("title") or "download_failure"
             safe_title = re.sub(r'[<>:"/\\|?*]', "_", fallback_name)[:100] or "download_failure"
             metadata_path = _build_archive_sidecar_path(Path(output_dir) / f"{safe_title}.zip")
@@ -487,7 +487,7 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
         download_button = _find_download_button(page)
 
         if download_button is None:
-            print("  [X] 未找到下载按钮")
+            print("  ❌ 未找到下载按钮")
             with open("debug_archiver.html", "w", encoding="utf-8") as file:
                 file.write(archiver_content)
             print("  已保存调试文件：debug_archiver.html")
@@ -522,7 +522,7 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
                 if attempt == download_start_max_attempts:
                     raise
                 retry_delay_seconds = attempt * 10
-                print(f"  [!] 本次等待下载开始超时，{retry_delay_seconds} 秒后重试...")
+                print(f"  ⚠️ 本次等待下载开始超时，{retry_delay_seconds} 秒后重试...")
                 time.sleep(retry_delay_seconds)
                 page.goto(archiver_url, wait_until="domcontentloaded")
                 page.wait_for_timeout(2000)
@@ -530,7 +530,7 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
                 archiver_metadata = extract_archiver_metadata_from_page(archiver_content, archiver_url)
                 download_button = _find_download_button(page)
                 if download_button is None:
-                    print("  [X] 重试时未找到下载按钮")
+                    print("  ❌ 重试时未找到下载按钮")
                     with open("debug_archiver.html", "w", encoding="utf-8") as file:
                         file.write(archiver_content)
                     print("  已保存调试文件：debug_archiver.html")
@@ -593,12 +593,12 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
                 "archive_contents": zip_metadata,
             }
             write_sidecar_metadata(metadata_path, metadata)
-            print(f"  [OK] 下载完成：{file_size:.2f} MiB")
+            print(f"  ✅ 下载完成：{file_size:.2f} MiB")
             print(f"  保存位置：{save_path}")
             print(f"  元信息：{metadata_path.name}")
             return metadata
 
-        print("  [X] 文件保存失败")
+        print("  ❌ 文件保存失败")
         if metadata_path is not None:
             write_sidecar_metadata(
                 metadata_path,
@@ -617,7 +617,7 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
         return None
 
     except PlaywrightTimeout:
-        print("  [X] 操作超时")
+        print("  ❌ 操作超时")
         if metadata_path is not None:
             write_sidecar_metadata(
                 metadata_path,
@@ -635,7 +635,7 @@ def download_gallery(page, gallery_url: str, output_dir: str, source_metadata: d
             )
         return None
     except Exception as error:
-        print(f"  [X] 下载失败：{error}")
+        print(f"  ❌ 下载失败：{error}")
         import traceback
 
         traceback.print_exc()
@@ -802,13 +802,13 @@ def main() -> int:
         context.add_cookies(cookies)
         page = context.new_page()
 
-        print("\n[步骤 1/4] 验证登录状态...")
+        print("\n[🧭步骤 1/4] 验证登录状态...")
         logged_in, gp_balance = check_login_status(page)
         if logged_in:
-            print("[OK] 已登录")
+            print("✅ 已登录")
             print(f"可用 GP: {gp_balance:,}")
         else:
-            print("[X] 未登录！Cookie 可能已过期")
+            print("❌ 未登录！Cookie 可能已过期")
             print(f"请重新导出 Cookie 文件：{args.cookie_file}")
             browser.close()
             return 1
@@ -841,7 +841,7 @@ def main() -> int:
                 print(f"GP 成本：{gallery_gp_cost:,} GP | 评分：{gallery_score}")
                 print(f"{'=' * 80}")
 
-            print("\n[步骤 2/4] 访问画廊详情...")
+            print("\n[🧭步骤 2/4] 访问画廊详情...")
             metadata = download_gallery(page, gallery_url, str(output_dir), gallery, runtime_metadata)
             if metadata is not None:
                 success_count += 1
