@@ -275,17 +275,26 @@ class EHentaiUploader:
             保存的文件路径，失败返回 None
         """
         import time
-        from pathlib import Path
         
+        start_monotonic = time.monotonic()
+        link_wait_seconds_total = 0
+        network_wait_seconds_total = 0
+        validation_wait_seconds_total = 0
+        validation_checks = 0
+
         print("\n⬇️ 下载专属种子...")
         torrent_url = f"https://e-hentai.org/gallerytorrents.php?gid={gid}&t={token}"
         download_link: str | None = None
+        link_max_attempts = 5
 
-        for attempt in range(1, 6):
+        print(f"  🔎 [获取下载链接] 开始 ({link_max_attempts} 次以内)")
+        link_attempts_used = 0
+        for attempt in range(1, link_max_attempts + 1):
+            link_attempts_used = attempt
             resp = self.session.get(torrent_url, timeout=30)
             if resp.status_code != 200:
-                    print(f"⚠️ 无法访问种子页面，状态码：{resp.status_code}")
-                    return None
+                print(f"⚠️ [获取下载链接] 无法访问种子页面，状态码：{resp.status_code}")
+                return None
 
             soup = BeautifulSoup(resp.text, 'html.parser')
 
@@ -324,40 +333,102 @@ class EHentaiUploader:
                 break
 
             wait_seconds = attempt * 2
-            print(f"  ⚠️ 第 {attempt} 次未找到下载链接，{wait_seconds} 秒后重试...")
+            link_wait_seconds_total += wait_seconds
+            print(f"⚠️ [获取下载链接] 第 {attempt}/{link_max_attempts} 次未找到专属下载链接，{wait_seconds} 秒后重试...")
             time.sleep(wait_seconds)
 
         if not download_link:
-            print("⚠️ 未找到专属种子下载链接")
+            elapsed = time.monotonic() - start_monotonic
+            print("❌ [获取下载链接] 未找到专属种子下载链接")
+            print(f"ℹ️ [下载专属种子] 本次耗时 {elapsed:.1f} 秒（等待：链接 {link_wait_seconds_total}s / 网络 {network_wait_seconds_total}s / 校验 {validation_wait_seconds_total}s）")
             return None
+
+        print("✅ [获取下载链接] 已找到专属下载链接")
         
         # 下载种子并校验完整性
         dl_url = download_link if download_link.startswith('http') else f'https://e-hentai.org{download_link}'
         output_path = build_personalized_torrent_path(title, output_dir)
         output_path.parent.mkdir(exist_ok=True)
 
+        # 这里的失败分两类：
+        # 1) 网络/TLS/对端临时断流（例如 SSLEOFError、连接失败、超时、非 200），需要长间隔重试。
+        # 2) HTTP 请求成功返回了内容，但内容不是合法 torrent（偶发生成延迟/占位内容），这种不应套用长等待。
+        import requests
+
+        download_timeout_seconds = 30
+
+        # 第二层：真实下载请求的网络级重试（按你的策略：30 秒间隔、最多 10 次）
+        network_retry_interval_seconds = 30
+        network_max_attempts = 10
+
+        # 第三层：内容校验失败的短重试（避免和网络长重试叠加导致总耗时过长）
+        validation_max_attempts = 3
+        validation_retry_interval_seconds = 2
+
         last_content = b''
-        for attempt in range(1, 4):
-            dl = self.session.get(dl_url, timeout=30)
-            last_content = dl.content
+        last_error: str | None = None
+        network_attempts_used = 0
 
-            if dl.status_code != 200:
-                print(f"⚠️ 下载失败，状态码：{dl.status_code}")
-                return None
+        print(f"  ⬇️ [下载专属种子] 开始（网络重试：{network_max_attempts} 次，每次间隔 {network_retry_interval_seconds}s；校验短重试：{validation_max_attempts} 次，每次间隔 {validation_retry_interval_seconds}s）")
+        for net_attempt in range(1, network_max_attempts + 1):
+            network_attempts_used = net_attempt
+            try:
+                dl = self.session.get(dl_url, timeout=download_timeout_seconds)
+                last_content = dl.content
 
-            if is_valid_torrent_bytes(last_content):
-                with open(output_path, 'wb') as f:
-                    f.write(last_content)
+                if dl.status_code != 200:
+                    last_error = f"HTTP {dl.status_code}"
+                    print(f"⚠️ [下载专属种子] 第 {net_attempt}/{network_max_attempts} 次下载失败：HTTP {dl.status_code}")
+                else:
+                    # 网络请求成功后，进入内容校验短重试。
+                    for val_attempt in range(1, validation_max_attempts + 1):
+                        validation_checks += 1
+                        if is_valid_torrent_bytes(last_content):
+                            with open(output_path, 'wb') as f:
+                                f.write(last_content)
 
-                print(f"✅ 已保存：{output_path} ({len(last_content):,} bytes)")
-                return str(output_path)
+                            print(f"✅ 已保存：{output_path} ({len(last_content):,} bytes)")
+                            elapsed = time.monotonic() - start_monotonic
+                            print(f"ℹ️ [下载专属种子] 本次耗时 {elapsed:.1f} 秒（等待：链接 {link_wait_seconds_total}s / 网络 {network_wait_seconds_total}s / 校验 {validation_wait_seconds_total}s；校验次数：{validation_checks}）")
+                            return str(output_path)
 
-            print(f"⚠️ 第 {attempt} 次下载到的专属种子无效，准备重试...")
+                        last_error = "invalid torrent bytes"
+                        if val_attempt >= validation_max_attempts:
+                            break
+
+                        validation_wait_seconds_total += validation_retry_interval_seconds
+                        print(f"⚠️ [校验下载内容] 第 {val_attempt}/{validation_max_attempts} 次校验失败：返回内容不是合法 torrent，{validation_retry_interval_seconds} 秒后快速重试...")
+                        time.sleep(validation_retry_interval_seconds)
+                        dl = self.session.get(dl_url, timeout=download_timeout_seconds)
+                        if dl.status_code != 200:
+                            last_error = f"HTTP {dl.status_code}"
+                            print(f"⚠️ [校验下载内容] 快速重试时下载失败：HTTP {dl.status_code}，交回网络重试")
+                            break
+                        last_content = dl.content
+
+            except (requests.exceptions.SSLError, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+                print(f"⚠️ [下载专属种子] 第 {net_attempt}/{network_max_attempts} 次下载遇到网络异常：{type(exc).__name__}: {exc}")
+
+            if net_attempt < network_max_attempts:
+                network_wait_seconds_total += network_retry_interval_seconds
+                if last_error:
+                    print(f"  ⏳ [下载专属种子] {network_retry_interval_seconds} 秒后重试网络下载 ({net_attempt}/{network_max_attempts})，原因：{last_error}")
+                else:
+                    print(f"  ⏳ [下载专属种子] {network_retry_interval_seconds} 秒后重试网络下载 ({net_attempt}/{network_max_attempts})")
+                time.sleep(network_retry_interval_seconds)
 
         debug_path = output_path.with_suffix('.invalid.bin')
         with open(debug_path, 'wb') as f:
             f.write(last_content)
-        print(f"⚠️ 专属种子连续重试后仍无效，已保存调试文件：{debug_path}")
+        if last_error:
+            elapsed = time.monotonic() - start_monotonic
+            print(f"❌ [下载专属种子] 连续重试后仍失败（最后错误：{last_error}），已保存调试文件：{debug_path}")
+            print(f"ℹ️ [下载专属种子] 本次耗时 {elapsed:.1f} 秒（等待：链接 {link_wait_seconds_total}s / 网络 {network_wait_seconds_total}s / 校验 {validation_wait_seconds_total}s；链接尝试：{link_attempts_used}/{link_max_attempts}；网络尝试：{network_attempts_used}/{network_max_attempts}；校验次数：{validation_checks}）")
+        else:
+            elapsed = time.monotonic() - start_monotonic
+            print(f"❌ [下载专属种子] 连续重试后仍无效，已保存调试文件：{debug_path}")
+            print(f"ℹ️ [下载专属种子] 本次耗时 {elapsed:.1f} 秒（等待：链接 {link_wait_seconds_total}s / 网络 {network_wait_seconds_total}s / 校验 {validation_wait_seconds_total}s；校验次数：{validation_checks}）")
         return None
 
 
