@@ -18,11 +18,11 @@ e-hentai 种子上传工具
     uv run python ehentai_uploader.py --cookie "你的 Cookie" --upload "种子.torrent" https://e-hentai.org/g/3828071/76966bded7/
 """
 
-import sys
 import argparse
-from pathlib import Path
-from urllib.parse import urlparse, parse_qs
 import re
+import sys
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import bencodepy
 import requests
@@ -175,7 +175,7 @@ class EHentaiUploader:
         
         return result
     
-    def upload_torrent(self, gallery_url: str, torrent_path: str, comment: str = "", download_personalized: bool = True, output_dir: str = "generated_torrents") -> bool:
+    def upload_torrent(self, gallery_url: str, torrent_path: str, comment: str = "", download_personalized: bool = True, output_dir: str = "generated_torrents") -> tuple[bool, bool, str | None]:
         """
         上传种子文件到 e-hentai
         
@@ -187,7 +187,7 @@ class EHentaiUploader:
             output_dir: 专属种子保存目录
         
         Returns:
-            上传是否成功
+            (success, is_replaced, replacement_url) - 上传是否成功，画廊是否被替换，新画廊 URL（如有）
         """
         gid, token, title = self.get_gallery_info(gallery_url)
         
@@ -202,7 +202,7 @@ class EHentaiUploader:
         max_size = 10 * 1024 * 1024
         if len(torrent_data) > max_size:
             print("❌ 种子文件超过 10MB 限制")
-            return False
+            return False, False, None
         
         print(f"文件大小：{len(torrent_data) / 1024:.1f} KB")
         
@@ -242,9 +242,9 @@ class EHentaiUploader:
                 downloaded_path = self._download_personalized_torrent(gid, token, title, output_dir)
                 if not downloaded_path:
                     print("❌ 上传成功，但下载专属种子失败")
-                    return False
+                    return False, False, None
             
-            return True
+            return True, False, None
         else:
             # 尝试提取错误信息
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -257,15 +257,75 @@ class EHentaiUploader:
                         break
             if error is None:
                 error = soup.find('font', color='red')
+            
+            error_message = ""
             if error:
-                print(f"❌ 上传失败：{error.get_text().strip()}")
+                error_message = error.get_text().strip()
+                print(f"❌ 上传失败：{error_message}")
             else:
                 print("❌ 上传失败（未知原因）")
+                error_message = "Unknown upload error"
                 # 保存响应以便调试
                 with open('upload_response.html', 'w', encoding='utf-8') as f:
                     f.write(response.text)
                 print("响应已保存到：upload_response.html")
-            return False
+            
+            # 如果是 "Invalid gallery" 错误，检查画廊是否被替换
+            if "Invalid gallery" in error_message or "Invalid gallery" in response.text.lower():
+                print("\n🔍 检测到 'Invalid gallery' 错误，检查画廊状态...")
+                is_replaced, replacement_url = self.check_gallery_replaced(gallery_url)
+                if is_replaced:
+                    print("⚠️ 画廊已被替换，上传失败是预期的")
+                    if replacement_url:
+                        print(f"💡 请使用新画廊 URL 重试：{replacement_url}")
+                    return False, is_replaced, replacement_url
+            
+            return False, False, None
+    
+    def check_gallery_replaced(self, gallery_url: str) -> tuple[bool, str | None]:
+        """
+        检查画廊是否已被替换（replaced）
+        
+        Args:
+            gallery_url: 画廊 URL
+        
+        Returns:
+            (is_replaced, replacement_url) - 如果被替换，返回 True 和新画廊 URL（如有）
+        """
+        gid, token, title = self.get_gallery_info(gallery_url)
+        
+        print(f"\n检查画廊状态：{title}")
+        print(f"GID: {gid}, Token: {token}")
+        
+        # 访问画廊页面
+        response = self.session.get(f"{self.base_url}/g/{gid}/{token}/", timeout=30)
+        response.raise_for_status()
+        
+        # 检查是否被替换
+        if "This gallery has been replaced" in response.text or "(Replaced)" in response.text:
+            print("⚠️ 画廊已被替换（Replaced）")
+            
+            # 尝试提取新画廊 URL
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # 查找 "There are newer versions of this gallery available:" 部分
+            newer_versions_div = soup.find('div', id='gnd')
+            if newer_versions_div:
+                newer_links = newer_versions_div.find_all('a', href=True)
+                if newer_links:
+                    # 获取最后一个（最新）的画廊链接
+                    latest_link = newer_links[-1]
+                    latest_url = str(latest_link.get('href', ''))
+                    if latest_url:
+                        print(f"📌 找到更新版本：{latest_url}")
+                        return True, latest_url
+            
+            print("ℹ️ 未找到新画廊 URL（可能有多个版本，建议手动检查）")
+            return True, None
+        
+        print("✅ 画廊状态正常")
+        return False, None
     
     def _download_personalized_torrent(self, gid: str, token: str, title: str, output_dir: str = "generated_torrents") -> str | None:
         """
@@ -511,13 +571,17 @@ def main():
         if args.upload:
             # 上传种子
             download_personalized = not args.skip_download
-            success = uploader.upload_torrent(
+            success, is_replaced, replacement_url = uploader.upload_torrent(
                 args.url, 
                 args.upload, 
                 args.comment,
                 download_personalized=download_personalized,
                 output_dir=args.output_dir
             )
+            if not success and is_replaced:
+                print("\n⚠️ 画廊已被替换")
+                if replacement_url:
+                    print(f"💡 新画廊 URL: {replacement_url}")
             sys.exit(0 if success else 1)
         else:
             # 获取 tracker 信息

@@ -14,8 +14,9 @@ import json
 import sys
 from pathlib import Path
 
-from create_torrent import convert_smb_to_server_path, create_torrent_remote, upload_to_smb
 from dotenv import dotenv_values
+
+from create_torrent import convert_smb_to_server_path, create_torrent_remote, upload_to_smb
 from ehentai_uploader import EHentaiUploader, build_personalized_torrent_path, load_cookie_from_file
 from seed_personalized import add_torrent_for_seeding, derive_qb_save_path
 
@@ -77,6 +78,7 @@ def load_gallery_url_from_json(json_path: Path) -> str:
     if not gallery_url:
         raise ValueError(f"JSON 中缺少 gallery.url: {json_path}")
     return str(gallery_url)
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -196,7 +198,7 @@ def run_single_workflow(
     print("\n" + "-" * 60)
     print("[🧭步骤 3/4] 上传到 e-hentai 并下载 personalized torrent")
     print("-" * 60)
-    upload_success = uploader.upload_torrent(
+    upload_success, is_replaced, replacement_url = uploader.upload_torrent(
         gallery_url=gallery_url,
         torrent_path=str(generated_torrent_path),
         comment=args.comment,
@@ -204,7 +206,19 @@ def run_single_workflow(
         output_dir=args.output_dir,
     )
     if not upload_success:
-        raise RuntimeError("上传到 e-hentai 失败")
+        if is_replaced:
+            print("\n⚠️ 画廊已被替换，将清理源文件让下一轮重新生成")
+            if replacement_url:
+                print(f"💡 新画廊 URL: {replacement_url}")
+            print(f"🗑️ 删除：{source_path}")
+            print(f"🗑️ 删除：{json_path}")
+            if source_path.exists():
+                source_path.unlink()
+            if json_path.exists():
+                json_path.unlink()
+            raise RuntimeError("画廊已被替换，源文件已清理。下一轮将自动重新生成。")
+        else:
+            raise RuntimeError("上传到 e-hentai 失败")
     if not personalized_torrent_path.exists():
         raise RuntimeError(f"上传成功，但未找到 personalized torrent: {personalized_torrent_path}")
 
