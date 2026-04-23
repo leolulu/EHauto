@@ -12,13 +12,24 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Any, NoReturn
 
 from dotenv import dotenv_values
 
 from create_torrent import convert_smb_to_server_path, create_torrent_remote, upload_to_smb
 from ehentai_uploader import EHentaiUploader, build_personalized_torrent_path, load_cookie_from_file
 from seed_personalized import add_torrent_for_seeding, derive_qb_save_path
+
+
+ORDINARY_PUBLISH_FAILURE_LIMIT = 3
+
+
+class TerminalRetirementError(RuntimeError):
+    def __init__(self, message: str, *, reason: str):
+        super().__init__(message)
+        self.reason = reason
 
 
 def load_config() -> dict[str, str]:
@@ -71,13 +82,86 @@ def collect_workflow_sources(source_path: Path) -> list[Path]:
 
 
 def load_gallery_url_from_json(json_path: Path) -> str:
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = read_sidecar_json(json_path)
 
     gallery_url = data.get("gallery", {}).get("url")
     if not gallery_url:
         raise ValueError(f"JSON 中缺少 gallery.url: {json_path}")
     return str(gallery_url)
+
+
+def read_sidecar_json(json_path: Path) -> dict[str, Any]:
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if not isinstance(data, dict):
+        raise ValueError(f"JSON 顶层必须是对象: {json_path}")
+
+    return data
+
+
+def write_sidecar_json(json_path: Path, data: dict[str, Any]) -> None:
+    temp_path = json_path.with_suffix(f"{json_path.suffix}.tmp")
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    temp_path.replace(json_path)
+
+
+def increment_ordinary_publish_failure(json_path: Path, error_summary: str) -> int:
+    data = read_sidecar_json(json_path)
+
+    workflow = data.get("workflow")
+    if workflow is None:
+        workflow = {}
+    elif not isinstance(workflow, dict):
+        raise ValueError(f"workflow 字段必须是对象: {json_path}")
+
+    publish_failure = workflow.get("publish_failure")
+    if publish_failure is None:
+        publish_failure = {}
+    elif not isinstance(publish_failure, dict):
+        raise ValueError(f"workflow.publish_failure 字段必须是对象: {json_path}")
+
+    current_count = publish_failure.get("count", 0)
+    if isinstance(current_count, bool) or not isinstance(current_count, int):
+        raise ValueError(f"workflow.publish_failure.count 字段必须是整数: {json_path}")
+
+    updated_count = current_count + 1
+    publish_failure["count"] = updated_count
+    publish_failure["latest_error"] = error_summary
+    publish_failure["latest_timestamp"] = datetime.now().astimezone().isoformat()
+    workflow["publish_failure"] = publish_failure
+    data["workflow"] = workflow
+
+    write_sidecar_json(json_path, data)
+    return updated_count
+
+
+def handle_ordinary_publish_failure(
+    *,
+    source_path: Path,
+    json_path: Path,
+    error_summary: str,
+    enable_failure_retirement: bool,
+) -> NoReturn:
+    if not enable_failure_retirement:
+        raise RuntimeError(error_summary)
+
+    ordinary_failure_count = increment_ordinary_publish_failure(json_path, error_summary)
+    print(f"⚠️ 普通发布失败累计次数: {ordinary_failure_count}")
+    if ordinary_failure_count > ORDINARY_PUBLISH_FAILURE_LIMIT:
+        print(
+            f"⚠️ 发布失败次数已超过阈值 {ORDINARY_PUBLISH_FAILURE_LIMIT}，"
+            "将清理源文件以停止无限重试"
+        )
+        cleanup_processed_source(source_path, json_path, label="🗑️ 删除")
+        raise TerminalRetirementError(
+            f"发布失败次数超过阈值 {ORDINARY_PUBLISH_FAILURE_LIMIT}，源文件已清理。",
+            reason="publish_failure_limit",
+        )
+
+    raise RuntimeError(error_summary)
 
 
 
@@ -138,6 +222,8 @@ def run_single_workflow(
     args: argparse.Namespace,
     config: dict[str, str],
     cookie_str: str,
+    *,
+    enable_failure_retirement: bool,
 ) -> None:
     generated_torrent_path = Path(args.output) if args.output else build_generated_torrent_path(str(source_path), args.output_dir)
 
@@ -198,27 +284,46 @@ def run_single_workflow(
     print("\n" + "-" * 60)
     print("[🧭步骤 3/4] 上传到 e-hentai 并下载 personalized torrent")
     print("-" * 60)
-    upload_success, is_replaced, replacement_url = uploader.upload_torrent(
-        gallery_url=gallery_url,
-        torrent_path=str(generated_torrent_path),
-        comment=args.comment,
-        download_personalized=True,
-        output_dir=args.output_dir,
-    )
+    try:
+        upload_success, is_replaced, replacement_url = uploader.upload_torrent(
+            gallery_url=gallery_url,
+            torrent_path=str(generated_torrent_path),
+            comment=args.comment,
+            download_personalized=True,
+            output_dir=args.output_dir,
+        )
+    except Exception as exc:
+        upload_error_summary = uploader.last_upload_error or f"上传到 e-hentai 失败: {exc}"
+        if uploader.last_upload_completed:
+            raise RuntimeError(upload_error_summary) from exc
+
+        handle_ordinary_publish_failure(
+            source_path=source_path,
+            json_path=json_path,
+            error_summary=upload_error_summary,
+            enable_failure_retirement=enable_failure_retirement,
+        )
+
     if not upload_success:
         if is_replaced:
             print("\n⚠️ 画廊已被替换，将清理源文件让下一轮重新生成")
             if replacement_url:
                 print(f"💡 新画廊 URL: {replacement_url}")
-            print(f"🗑️ 删除：{source_path}")
-            print(f"🗑️ 删除：{json_path}")
-            if source_path.exists():
-                source_path.unlink()
-            if json_path.exists():
-                json_path.unlink()
-            raise RuntimeError("画廊已被替换，源文件已清理。下一轮将自动重新生成。")
-        else:
-            raise RuntimeError("上传到 e-hentai 失败")
+            cleanup_processed_source(source_path, json_path, label="🗑️ 删除")
+            raise TerminalRetirementError(
+                "画廊已被替换，源文件已清理。下一轮将自动重新生成。",
+                reason="replaced_gallery",
+            )
+        upload_error_summary = uploader.last_upload_error or "上传到 e-hentai 失败"
+        if uploader.last_upload_completed:
+            raise RuntimeError(upload_error_summary)
+
+        handle_ordinary_publish_failure(
+            source_path=source_path,
+            json_path=json_path,
+            error_summary=upload_error_summary,
+            enable_failure_retirement=enable_failure_retirement,
+        )
     if not personalized_torrent_path.exists():
         raise RuntimeError(f"上传成功，但未找到 personalized torrent: {personalized_torrent_path}")
 
@@ -244,7 +349,11 @@ def run_single_workflow(
     print(f"分类: {args.category}")
 
 
-def print_batch_summary(successes: list[Path], failures: list[tuple[Path, str]]) -> None:
+def print_batch_summary(
+    successes: list[Path],
+    unresolved_failures: list[tuple[Path, str]],
+    retired_items: list[tuple[Path, str]],
+) -> None:
     print("\n" + "=" * 60)
     print("🧾 批处理汇总")
     print("=" * 60)
@@ -252,16 +361,20 @@ def print_batch_summary(successes: list[Path], failures: list[tuple[Path, str]])
     for path in successes:
         print(f"  ✅ {path.name}")
 
-    print(f"失败: {len(failures)}")
-    for path, error in failures:
+    print(f"未解决失败: {len(unresolved_failures)}")
+    for path, error in unresolved_failures:
         print(f"  ❌ {path.name}: {error}")
 
+    print(f"已终局清理: {len(retired_items)}")
+    for path, message in retired_items:
+        print(f"  🗑️ {path.name}: {message}")
 
-def cleanup_processed_source(source_path: Path, json_path: Path) -> None:
+
+def cleanup_processed_source(source_path: Path, json_path: Path, *, label: str = "🧹 已删除") -> None:
     for path in (source_path, json_path):
         if path.exists():
             path.unlink()
-            print(f"🧹 已删除: {path}")
+            print(f"{label}: {path}")
 
 
 def main() -> None:
@@ -285,7 +398,8 @@ def main() -> None:
 
     is_batch_mode = source_path.is_dir()
     successes: list[Path] = []
-    failures: list[tuple[Path, str]] = []
+    unresolved_failures: list[tuple[Path, str]] = []
+    retired_items: list[tuple[Path, str]] = []
 
     if is_batch_mode:
         print(f"发现目录批处理输入，共 {len(workflow_sources)} 个 .zip，开始逐个处理")
@@ -309,20 +423,27 @@ def main() -> None:
                 args=args,
                 config=config,
                 cookie_str=cookie_str,
+                enable_failure_retirement=is_batch_mode,
             )
             cleanup_processed_source(workflow_source, json_path)
             successes.append(workflow_source)
+        except TerminalRetirementError as exc:
+            if not is_batch_mode:
+                raise
+            retired_items.append((workflow_source, str(exc)))
+            print(f"\n⚠️ 当前文件已终局清理，继续下一个: {workflow_source.name}")
+            print(f"原因: {exc}")
         except Exception as exc:
             if not is_batch_mode:
                 raise
             error_message = str(exc)
-            failures.append((workflow_source, error_message))
+            unresolved_failures.append((workflow_source, error_message))
             print(f"\n❌ 当前文件处理失败，继续下一个: {workflow_source.name}")
             print(f"原因: {error_message}")
 
     if is_batch_mode:
-        print_batch_summary(successes, failures)
-        if failures:
+        print_batch_summary(successes, unresolved_failures, retired_items)
+        if unresolved_failures:
             raise SystemExit(1)
 
 

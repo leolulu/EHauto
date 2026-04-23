@@ -78,6 +78,8 @@ class EHentaiUploader:
             print(f"使用代理：{proxy}")
         
         self.base_url = "https://e-hentai.org"
+        self.last_upload_error: str | None = None
+        self.last_upload_completed = False
     
     def _parse_cookie(self, cookie_str: str) -> dict[str, str]:
         """解析 Cookie 字符串为字典"""
@@ -190,6 +192,8 @@ class EHentaiUploader:
             (success, is_replaced, replacement_url) - 上传是否成功，画廊是否被替换，新画廊 URL（如有）
         """
         gid, token, title = self.get_gallery_info(gallery_url)
+        self.last_upload_error = None
+        self.last_upload_completed = False
         
         print(f"\n上传种子到：{title}")
         print(f"种子文件：{torrent_path}")
@@ -201,7 +205,8 @@ class EHentaiUploader:
         # 检查文件大小（10MB 限制）
         max_size = 10 * 1024 * 1024
         if len(torrent_data) > max_size:
-            print("❌ 种子文件超过 10MB 限制")
+            self.last_upload_error = "种子文件超过 10MB 限制"
+            print(f"❌ {self.last_upload_error}")
             return False, False, None
         
         print(f"文件大小：{len(torrent_data) / 1024:.1f} KB")
@@ -236,12 +241,14 @@ class EHentaiUploader:
         # 检查上传结果
         if 'success' in response.text.lower() or 'uploaded' in response.text.lower() or 'complete' in response.text.lower():
             print("✅ 上传成功!")
+            self.last_upload_completed = True
             
             # 下载专属种子
             if download_personalized:
                 downloaded_path = self._download_personalized_torrent(gid, token, title, output_dir)
                 if not downloaded_path:
-                    print("❌ 上传成功，但下载专属种子失败")
+                    self.last_upload_error = "上传成功，但下载专属种子失败"
+                    print(f"❌ {self.last_upload_error}")
                     return False, False, None
             
             return True, False, None
@@ -261,10 +268,12 @@ class EHentaiUploader:
             error_message = ""
             if error:
                 error_message = error.get_text().strip()
+                self.last_upload_error = error_message
                 print(f"❌ 上传失败：{error_message}")
             else:
                 print("❌ 上传失败（未知原因）")
                 error_message = "Unknown upload error"
+                self.last_upload_error = error_message
                 # 保存响应以便调试
                 with open('upload_response.html', 'w', encoding='utf-8') as f:
                     f.write(response.text)
